@@ -291,7 +291,11 @@ Examples:
 	// Start license heartbeat if license is provided
 	// Metrics adapter is always created (lightweight wrapper); metrics
 	// server only starts when --metrics-port is set.
-	adapter := NewMetricsAdapter(server.Stats(), server.Handler(), maxMemory)
+	// A percentage --maxmemory parses to zero absolute bytes; report the
+	// byte budget the engine resolved at startup instead.
+	effectiveMaxMemory := effectiveMemoryLimit(maxMemory, GetActiveEngine())
+
+	adapter := NewMetricsAdapter(server.Stats(), server.Handler(), effectiveMaxMemory)
 
 	var metricsServer *metrics.Server
 	if *metricsPort > 0 {
@@ -379,7 +383,7 @@ Examples:
 		fmt.Printf("  Unix Socket: %s\n", *unixSocket)
 	}
 
-	fmt.Printf("  Max Memory: %s\n", formatBytes(uint64(maxMemory)))
+	fmt.Printf("  Max Memory: %s\n", formatBytes(uint64(effectiveMaxMemory)))
 	fmt.Printf("  Threads: %d\n", runtime.GOMAXPROCS(0))
 
 	if *requirePass != "" {

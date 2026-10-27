@@ -123,6 +123,19 @@ func GetActiveEngine() *effects.Engine {
 	return activeRuntime.Engine
 }
 
+// effectiveMemoryLimit returns the byte budget the effects engine enforces.
+// beacon.ParseMemoryLimit yields zero bytes for a percentage spec and the
+// engine resolves the fraction against available memory once at startup, so
+// its MemoryTarget is authoritative for reporting. Without an engine (before
+// InitializeEffects) the configured absolute value is returned.
+func effectiveMemoryLimit(configured int64, engine *effects.Engine) int64 {
+	if engine == nil {
+		return configured
+	}
+
+	return engine.MemoryTarget()
+}
+
 // InitializeCluster wires redis-specific hooks onto the cluster
 // runtime: subscription notifications (engine key events → pg wire
 // clients) and command forwarding (PeerManager → Handler). Must be
