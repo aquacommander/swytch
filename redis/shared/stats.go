@@ -159,11 +159,12 @@ func NewStats() *Stats {
 	}
 }
 
-// Reset resets all statistics
+// Reset resets all statistics. CurrConnections and BlockedClients track live
+// state rather than accumulated counts, so they are left as is: zeroing them
+// while clients are connected or blocked drives them negative once those
+// clients close or unblock.
 func (s *Stats) Reset() {
-	s.CurrConnections.Store(0)
 	s.TotalConnections.Store(0)
-	s.BlockedClients.Store(0)
 	s.CmdGet.Store(0)
 	s.CmdSet.Store(0)
 	s.CmdDel.Store(0)
@@ -248,39 +249,41 @@ func (s *Stats) RecordSetLatency(d time.Duration) {
 
 // GetLatencyP50 returns the 50th percentile GET latency
 func (s *Stats) GetLatencyP50() time.Duration {
-	return s.getPercentile(s.getLatencies, s.getLatIdx, 50)
+	return s.getPercentile(s.getLatencies, &s.getLatIdx, 50)
 }
 
 // GetLatencyP99 returns the 99th percentile GET latency
 func (s *Stats) GetLatencyP99() time.Duration {
-	return s.getPercentile(s.getLatencies, s.getLatIdx, 99)
+	return s.getPercentile(s.getLatencies, &s.getLatIdx, 99)
 }
 
 // SetLatencyP50 returns the 50th percentile SET latency
 func (s *Stats) SetLatencyP50() time.Duration {
-	return s.getPercentile(s.setLatencies, s.setLatIdx, 50)
+	return s.getPercentile(s.setLatencies, &s.setLatIdx, 50)
 }
 
 // SetLatencyP99 returns the 99th percentile SET latency
 func (s *Stats) SetLatencyP99() time.Duration {
-	return s.getPercentile(s.setLatencies, s.setLatIdx, 99)
+	return s.getPercentile(s.setLatencies, &s.setLatIdx, 99)
 }
 
 // CmdLatencyP50 returns the 50th percentile command latency (all commands)
 func (s *Stats) CmdLatencyP50() time.Duration {
-	return s.getPercentile(s.cmdLatencies, s.cmdLatIdx, 50)
+	return s.getPercentile(s.cmdLatencies, &s.cmdLatIdx, 50)
 }
 
 // CmdLatencyP99 returns the 99th percentile command latency (all commands)
 func (s *Stats) CmdLatencyP99() time.Duration {
-	return s.getPercentile(s.cmdLatencies, s.cmdLatIdx, 99)
+	return s.getPercentile(s.cmdLatencies, &s.cmdLatIdx, 99)
 }
 
-func (s *Stats) getPercentile(latencies []time.Duration, idx int, percentile int) time.Duration {
+// getPercentile reads *idx under latencyMu: the Record* methods advance it
+// under the same lock.
+func (s *Stats) getPercentile(latencies []time.Duration, idx *int, percentile int) time.Duration {
 	s.latencyMu.Lock()
 	defer s.latencyMu.Unlock()
 
-	count := min(idx, latencyHistogramSize)
+	count := min(*idx, latencyHistogramSize)
 	if count == 0 {
 		return 0
 	}
@@ -290,12 +293,12 @@ func (s *Stats) getPercentile(latencies []time.Duration, idx int, percentile int
 	copy(sorted, latencies[:count])
 	slices.Sort(sorted)
 
-	idx = (count * percentile) / 100
-	if idx >= count {
-		idx = count - 1
+	i := (count * percentile) / 100
+	if i >= count {
+		i = count - 1
 	}
 
-	return sorted[idx]
+	return sorted[i]
 }
 
 // Uptime returns the server uptime
